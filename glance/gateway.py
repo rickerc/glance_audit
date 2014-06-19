@@ -13,15 +13,20 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from oslo.config import cfg
+
 from glance.api import authorization
 from glance.api import policy
 from glance.api import property_protections
 from glance.common import property_utils
+import glance.convertor
 import glance.db
 import glance.domain
 import glance.notifier
 import glance.quota
 import glance.store
+
+cfg.CONF.import_opt('convert_image_to_raw', 'glance.convertor')
 
 
 class Gateway(object):
@@ -39,8 +44,15 @@ class Gateway(object):
                 image_factory, context, self.store_api)
         quota_image_factory = glance.quota.ImageFactoryProxy(
                 store_image_factory, context, self.db_api)
+
+        if cfg.CONF.convert_image_to_raw:
+            convertor_image_factory = glance.convertor.ImageFactoryProxy(
+                quota_image_factory, context, self.db_api)
+        else:
+            convertor_image_factory = quota_image_factory
+
         policy_image_factory = policy.ImageFactoryProxy(
-                quota_image_factory, context, self.policy)
+                convertor_image_factory, context, self.policy)
         notifier_image_factory = glance.notifier.ImageFactoryProxy(
                 policy_image_factory, context, self.notifier)
         if property_utils.is_property_protection_enabled():
@@ -69,8 +81,15 @@ class Gateway(object):
                 image_repo, context, self.store_api)
         quota_image_repo = glance.quota.ImageRepoProxy(
                 store_image_repo, context, self.db_api)
+
+        if cfg.CONF.convert_image_to_raw:
+            convertor_image_repo = glance.convertor.ImageRepoProxy(
+                quota_image_repo, context, self.db_api)
+        else:
+            convertor_image_repo = quota_image_repo
+
         policy_image_repo = policy.ImageRepoProxy(
-                quota_image_repo, context, self.policy)
+                convertor_image_repo, context, self.policy)
         notifier_image_repo = glance.notifier.ImageRepoProxy(
                 policy_image_repo, context, self.notifier)
         if property_utils.is_property_protection_enabled():

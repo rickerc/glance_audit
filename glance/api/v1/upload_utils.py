@@ -21,6 +21,7 @@ import webob.exc
 from glance.common import exception
 from glance.openstack.common import excutils
 from glance.common import utils
+import glance.convertor
 import glance.db
 import glance.openstack.common.log as logging
 import glance.registry.client.v1.api as registry
@@ -28,6 +29,7 @@ import glance.store
 
 
 CONF = cfg.CONF
+CONF.import_opt('convert_image_to_raw', 'glance.convertor')
 LOG = logging.getLogger(__name__)
 
 
@@ -91,6 +93,15 @@ def upload_data_to_store(req, image_meta, image_data, store, notifier):
         if remaining is not None:
             image_data = utils.LimitingReader(image_data, remaining)
 
+        if CONF.convert_image_to_raw and \
+                image_meta.get('container_format', 'bare') == 'bare':
+            image_data, new_size = glance.convertor.convert(
+                utils.CooperativeReader(image_data))
+            image_meta['size'] = new_size
+            # NOTE(sileht): disable checksum check
+            # the V2 API doesn't check that, so...
+            image_meta['checksum'] = None
+
         (location,
          size,
          checksum,
@@ -138,6 +149,11 @@ def upload_data_to_store(req, image_meta, image_data, store, notifier):
                   "to %(size)d"), locals())
         update_data = {'checksum': checksum,
                        'size': size}
+
+        if CONF.convert_image_to_raw and \
+                image_meta.get('container_format', 'bare') == 'bare':
+            update_data['disk_format'] = 'raw'
+
         try:
             image_meta = registry.update_image_metadata(req.context,
                                                         image_id,
